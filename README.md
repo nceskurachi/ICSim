@@ -20,8 +20,8 @@ You can get can-utils from github or on Ubuntu you may run the following
 With dependencies installed, you may use the [Meson build system](https://mesonbuild.com/) to build the project:
 
 ```
-  meson setup builddir && cd builddir
-  meson compile
+  meson setup build && cd build
+  meson compile -C build
 ```
 
 Testing on a virtual CAN interface
