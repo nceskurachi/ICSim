@@ -18,6 +18,7 @@
 #include <linux/can/raw.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <locale.h>
 
 #include "lib.h"
 
@@ -302,6 +303,7 @@ void Usage(char *msg) {
 }
 
 int main(int argc, char *argv[]) {
+  setlocale(LC_ALL, "C");
   int opt;
   int can;
   struct ifreq ifr;

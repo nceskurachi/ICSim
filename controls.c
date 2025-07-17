@@ -19,6 +19,7 @@
 #include <linux/can/raw.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <locale.h>
 
 #ifndef DATA_DIR
 #define DATA_DIR "./data/"

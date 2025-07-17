@@ -9,11 +9,12 @@ You will need:
 * SDL2
 * SDL2_Image
 * can-utils
+* Meson Build System
 
 You can get can-utils from github or on Ubuntu you may run the following
 
 ```
-  sudo apt-get install libsdl2-dev libsdl2-image-dev can-utils  
+  sudo apt-get install libsdl2-dev libsdl2-image-dev can-utils meson
 ```
 
 With dependencies installed, you may use the [Meson build system](https://mesonbuild.com/) to build the project:
