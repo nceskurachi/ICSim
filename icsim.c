@@ -178,16 +178,8 @@ void update_turn_signals(CarState* state) {
 }
 
 void update_lock_icon(CarState* state) {
-  int any_unlocked = 0;
-  for (int i = 0; i < 4; ++i) {
-    if (state->door_status[i] == DOOR_UNLOCKED) {
-      any_unlocked = 1;
-      break;
-    }
-  }
-
-  SDL_Rect icon_rect = {600, 20, 32, 32}; // 表示位置を任意に調整
-  if (any_unlocked) {
+  SDL_Rect icon_rect = {600, 20, 32, 32};
+  if (state->lock_status == OFF) {
     SDL_RenderCopy(renderer, unlock_tex, NULL, &icon_rect);
   } else {
     SDL_RenderCopy(renderer, lock_tex, NULL, &icon_rect);
@@ -395,14 +387,6 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
   }
 }
 
-void update_lock_icon(CarState* state) {
-  SDL_Rect icon_rect = {600, 20, 32, 32};
-  if (state->lock_status == OFF) {
-    SDL_RenderCopy(renderer, unlock_tex, NULL, &icon_rect);
-  } else {
-    SDL_RenderCopy(renderer, lock_tex, NULL, &icon_rect);
-  }
-}
 
 Uint8 generate_seed() {
   return rand() % 256;
