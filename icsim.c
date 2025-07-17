@@ -19,6 +19,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <locale.h>
+#include <errno.h>
 
 #include "lib.h"
 
@@ -440,51 +441,54 @@ int main(int argc, char *argv[]) {
 
   /* For now we will just operate on one CAN interface */
   while(running) {
+    // Handle Events
     while( SDL_PollEvent(&event) != 0 ) {
-	switch(event.type) {
-	    case SDL_QUIT:
-		running = 0;
-		break;
-	    case SDL_WINDOWEVENT:
-	    switch(event.window.event) {
-		case SDL_WINDOWEVENT_ENTER:
-		case SDL_WINDOWEVENT_RESIZED:
-			redraw_ic();
-		break;
-	    }
-   	}
+        switch(event.type) {
+            case SDL_QUIT:
+                running = 0;
+                break;
+            case SDL_WINDOWEVENT:
+            switch(event.window.event) {
+                case SDL_WINDOWEVENT_ENTER:
+                case SDL_WINDOWEVENT_RESIZED:
+                    redraw_ic();
+                break;
+            }
+        }
     }
 
-      nbytes = recvmsg(can, &msg, 0);
+    // Handle Network Data (non-blocking)
+    while(1) {
+      nbytes = recvmsg(can, &msg, MSG_DONTWAIT);
       if (nbytes < 0) {
-        perror("read");
-        return 1;
-      }  
+        // EAGAIN or EWOULDBLOCK means no more messages right now.
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            break; 
+        }
+        perror("recvmsg");
+        running = 0; // Exit on real error
+        break;
+      }
+
       if ((size_t)nbytes == CAN_MTU)
         maxdlen = CAN_MAX_DLEN;
       else if ((size_t)nbytes == CANFD_MTU)
         maxdlen = CANFD_MAX_DLEN;
       else {
         fprintf(stderr, "read: incomplete CAN frame\n");
-        return 1;
+        running = 0;
+        break;
       }
-      for (cmsg = CMSG_FIRSTHDR(&msg);
-           cmsg && (cmsg->cmsg_level == SOL_SOCKET);
-           cmsg = CMSG_NXTHDR(&msg,cmsg)) {
-             if (cmsg->cmsg_type == SO_TIMESTAMP) {
-               // struct timeval tv = *(struct timeval *)CMSG_DATA(cmsg);
-             }
-             else if (cmsg->cmsg_type == SO_RXQ_OVFL)
-               //dropcnt[i] = *(__u32 *)CMSG_DATA(cmsg);
-  	     fprintf(stderr, "Dropped packet\n");
-             }
-//      if(debug) fprint_canframe(stdout, &frame, "\n", 0, maxdlen);
+
+      //      if(debug) fprint_canframe(stdout, &frame, "\n", 0, maxdlen);
       if(frame.can_id == door_id) update_door_status(&frame, maxdlen);
       if(frame.can_id == signal_id) update_signal_status(&frame, maxdlen);
       if(frame.can_id == speed_id) update_speed_status(&frame, maxdlen);
+    }
 
-      redraw_ic();
-      SDL_Delay(3);
+    // Redraw the screen
+    redraw_ic();
+    // VSync, enabled in SDL_CreateRenderer, will handle pacing.
   }
 
   SDL_DestroyTexture(base_texture);
