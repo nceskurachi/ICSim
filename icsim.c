@@ -133,58 +133,34 @@ void update_speed(CarState* state) {
 void update_doors(CarState* state) {
   SDL_Rect update, pos;
   // If any door is unlocked, draw the red body and the specific open doors
-  if(state->door_status[0] == DOOR_UNLOCKED || state->door_status[1] == DOOR_UNLOCKED ||
-     state->door_status[2] == DOOR_UNLOCKED || state->door_status[3] == DOOR_UNLOCKED) {
-    // Make the base body red
-    update.x = 440;
-    update.y = 239;
-    update.w = 45;
-    update.h = 83;
-    memcpy(&pos, &update, sizeof(SDL_Rect));
-    pos.x -= 22;
-    pos.y -= 22;
-    SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
+  const SDL_Point sprite_coords[4] = {
+    {420, 263}, // Front Left
+    {484, 261}, // Front Right
+    {420, 284}, // Rear Left
+    {484, 287}  // Rear Right
+  };
+  const SDL_Point offset = {22, 22};
+  const SDL_Point body_sprite = {440, 239};
+  const SDL_Point body_size   = {45, 83};
+  const SDL_Point door_size   = {21, 22};
+
+  // Red body is drawn if any door is unlocked
+  for (int i = 0; i < 4; ++i) {
+    if (state->door_status[i] == DOOR_UNLOCKED) {
+      SDL_Rect src = {body_sprite.x, body_sprite.y, body_size.x, body_size.y};
+      SDL_Rect dst = {src.x - offset.x, src.y - offset.y, src.w, src.h};
+      SDL_RenderCopy(renderer, sprite_tex, &src, &dst);
+      break;
+    }
   }
 
-  if(state->door_status[0] == DOOR_UNLOCKED) {
-    update.x = 420;
-    update.y = 263;
-    update.w = 21;
-    update.h = 22;
-    memcpy(&pos, &update, sizeof(SDL_Rect));
-    pos.x -= 22;
-    pos.y -= 22;
-    SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
-  }
-  if(state->door_status[1] == DOOR_UNLOCKED) {
-    update.x = 484;
-    update.y = 261;
-    update.w = 21;
-    update.h = 22;
-    memcpy(&pos, &update, sizeof(SDL_Rect));
-    pos.x -= 22;
-    pos.y -= 22;
-    SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
-  }
-  if(state->door_status[2] == DOOR_UNLOCKED) {
-    update.x = 420;
-    update.y = 284;
-    update.w = 21;
-    update.h = 22;
-    memcpy(&pos, &update, sizeof(SDL_Rect));
-    pos.x -= 22;
-    pos.y -= 22;
-    SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
-  }
-  if(state->door_status[3] == DOOR_UNLOCKED) {
-    update.x = 484;
-    update.y = 287;
-    update.w = 21;
-    update.h = 22;
-    memcpy(&pos, &update, sizeof(SDL_Rect));
-    pos.x -= 22;
-    pos.y -= 22;
-    SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
+  // Draw each door that is unlocked
+  for (int i = 0; i < 4; ++i) {
+    if (state->door_status[i] == DOOR_UNLOCKED) {
+      SDL_Rect src = {sprite_coords[i].x, sprite_coords[i].y, door_size.x, door_size.y};
+      SDL_Rect dst = {src.x - offset.x, src.y - offset.y, src.w, src.h};
+      SDL_RenderCopy(renderer, sprite_tex, &src, &dst);
+    }
   }
 }
 
@@ -331,7 +307,6 @@ int main(int argc, char *argv[]) {
   struct cmsghdr *cmsg;
   struct stat dirstat;
   char ctrlmsg[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(__u32))];
-  int nbytes, maxdlen;
   int seed = 0;
   SDL_Event event;
 
