@@ -389,7 +389,6 @@ int main(int argc, char *argv[]) {
   }
 
   SDL_Window *window = NULL;
-  SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
   if(SDL_Init ( SDL_INIT_VIDEO ) < 0 ) {
 	printf("SDL Could not initializes\n");
 	exit(40);
