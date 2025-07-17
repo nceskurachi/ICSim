@@ -178,13 +178,36 @@ void update_turn_signals(CarState* state) {
 }
 
 void update_lock_icon(CarState* state) {
-  SDL_Rect icon_rect = {600, 20, 32, 32};
-  if (state->lock_status == OFF) {
-    SDL_RenderCopy(renderer, unlock_tex, NULL, &icon_rect);
-  } else {
-    SDL_RenderCopy(renderer, lock_tex, NULL, &icon_rect);
+  SDL_Texture* tex = (state->lock_status == OFF) ? unlock_tex : lock_tex;
+  int tex_w = 0, tex_h = 0;
+  int win_w = 0, win_h = 0;
+
+  // Get the texture size
+  if (SDL_QueryTexture(tex, NULL, NULL, &tex_w, &tex_h) != 0) {
+    fprintf(stderr, "SDL_QueryTexture failed: %s\n", SDL_GetError());
+    return;
   }
+
+  // Get the window size (output size of the render target)
+  if (SDL_GetRendererOutputSize(renderer, &win_w, &win_h) != 0) {
+    fprintf(stderr, "SDL_GetRendererOutputSize failed: %s\n", SDL_GetError());
+    return;
+  }
+
+  // Padding (displayed slightly inward from the bottom right)
+  const int padding = 10;
+
+  // Calculate the drawing position (bottom right)
+  SDL_Rect icon_rect = {
+    .x = win_w - tex_w - padding,
+    .y = win_h - tex_h - padding,
+    .w = tex_w,
+    .h = tex_h
+  };
+
+  SDL_RenderCopy(renderer, tex, NULL, &icon_rect);
 }
+
 
 /* Redraws the IC updating everything */
 void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
