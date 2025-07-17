@@ -87,6 +87,14 @@ typedef struct {
 
 CarState car_state;
 
+typedef struct {
+  int speed_redraw;
+  int doors_redraw;
+  int turn_redraw;
+} RedrawFlags;
+
+RedrawFlags redraw_flags = {1, 1, 1};
+
 
 // Simple map function
 long map(long x, long in_min, long in_max, long out_min, long out_max)
@@ -196,14 +204,22 @@ void update_turn_signals(CarState* state) {
 }
 
 /* Redraws the IC updating everything */
-void redraw_ic(CarState* snapshot) {
+void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   // 1. Clear the screen with the base background texture
-  blank_ic();
+  if (flags->speed_redraw ){
+    blacnk_ic();
+  }
   
   // 2. Draw all dynamic components on top based on their current state
-  update_speed(snapshot);
-  update_doors(snapshot);
-  update_turn_signals(snapshot);
+  if (flags->speed_redraw ){
+    update_speed(snapshot);
+  }
+  if (flags->doors_redraw ){
+    update_doors(snapshot);
+  }
+  if (flags->turn_redraw ){
+    update_turn_signals(snapshot);
+  }
 }
 
 /* Parses CAN fram and updates current_speed */
@@ -302,13 +318,19 @@ void Usage(char *msg) {
   exit(1);
 }
 
-int is_state_changed(CarState* prev, CarState* current) {
-  if (prev->speed != current->speed) return 1;
+
+void update_redraw_flags(CarState* prev, CarState* curr, RedrawFlags* flags) {
+  flags->speed_redraw = (prev->speed != curr->speed);
+
+  flags->doors_redraw = 0;
   for (int i = 0; i < 4; ++i)
-    if (prev->door_status[i] != current->door_status[i]) return 1;
+    if (prev->door_status[i] != curr->door_status[i])
+      flags->doors_redraw = 1;
+
+  flags->turn_redraw = 0;
   for (int i = 0; i < 2; ++i)
-    if (prev->turn_status[i] != current->turn_status[i]) return 1;
-  return 0;
+    if (prev->turn_status[i] != curr->turn_status[i])
+      flags->turn_redraw = 1;
 }
 
 
@@ -445,7 +467,7 @@ int main(int argc, char *argv[]) {
   // Draw the initial state of the IC
   CarState snapshot = car_state;
   CarState prev_snapshot = car_state;
-  redraw_ic(&snapshot);
+  redraw_ic(&snapshot, &redraw_flags);
   SDL_RenderPresent(renderer);
 
   state_mutex = SDL_CreateMutex();
@@ -462,8 +484,10 @@ int main(int argc, char *argv[]) {
     SDL_UnlockMutex(state_mutex);
 
     // 3. Check if the state has changed and redraw if necessary
-    if (is_state_changed(&prev_snapshot, &snapshot)) {
-      redraw_ic(&snapshot);
+    update_redraw_flags(&prev_snapshot, &snapshot, &redraw_flags);
+
+    if (redraw_flags.speed_redraw || redraw_flags.doors_redraw || redraw_flags.turn_redraw) {
+      redraw_ic(&snapshot, &redraw_flags);
       SDL_RenderPresent(renderer);
       prev_snapshot = snapshot;
     }
