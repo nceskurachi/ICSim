@@ -62,9 +62,6 @@ int seed = 0;
 int door_pos = DEFAULT_DOOR_BYTE;
 int signal_pos = DEFAULT_SIGNAL_BYTE;
 int speed_pos = DEFAULT_SPEED_BYTE;
-long current_speed = 0;
-int door_status[4];
-int turn_status[2];
 char *model = NULL;
 char data_file[256];
 SDL_Renderer *renderer = NULL;
@@ -72,6 +69,17 @@ SDL_Texture *base_texture = NULL;
 SDL_Texture *needle_tex = NULL;
 SDL_Texture *sprite_tex = NULL;
 SDL_Rect speed_rect;
+SDL_Thread* can_thread = NULL;
+SDL_mutex* state_mutex;
+
+typedef struct {
+  long speed;
+  int door_status[4];
+  int turn_status[2];
+} CarState;
+
+CarState car_state;
+
 
 // Simple map function
 long map(long x, long in_min, long in_max, long out_min, long out_max)
@@ -91,12 +99,12 @@ char *get_data(char *fname) {
 
 /* Default vehicle state */
 void init_car_state() {
-  door_status[0] = DOOR_LOCKED;
-  door_status[1] = DOOR_LOCKED;
-  door_status[2] = DOOR_LOCKED;
-  door_status[3] = DOOR_LOCKED;
-  turn_status[0] = OFF;
-  turn_status[1] = OFF;
+  car_state.door_status[0] = DOOR_LOCKED;
+  car_state.door_status[1] = DOOR_LOCKED;
+  car_state.door_status[2] = DOOR_LOCKED;
+  car_state.door_status[3] = DOOR_LOCKED;
+  car_state.turn_status[0] = OFF;
+  car_state.turn_status[1] = OFF;
 }
 
 /* Empty IC */
@@ -105,23 +113,23 @@ void blank_ic() {
 }
 
 /* Updates speedo */
-void update_speed() {
+void update_speed(CarState* state) {
   SDL_Point center;
   double angle = 0;
   center.x = 135;
   center.y = 20;
-  angle = map(current_speed, 0, 280, 0, 180);
+  angle = map(state->speed, 0, 280, 0, 180);
   if(angle < 0) angle = 0;
   if(angle > 180) angle = 180;
   SDL_RenderCopyEx(renderer, needle_tex, NULL, &speed_rect, angle, &center, SDL_FLIP_NONE);
 }
 
 /* Updates door unlocks simulated by door open icons */
-void update_doors() {
+void update_doors(CarState* state) {
   SDL_Rect update, pos;
   // If any door is unlocked, draw the red body and the specific open doors
-  if(door_status[0] == DOOR_UNLOCKED || door_status[1] == DOOR_UNLOCKED ||
-     door_status[2] == DOOR_UNLOCKED || door_status[3] == DOOR_UNLOCKED) {
+  if(state->door_status[0] == DOOR_UNLOCKED || state->door_status[1] == DOOR_UNLOCKED ||
+     state->door_status[2] == DOOR_UNLOCKED || state->door_status[3] == DOOR_UNLOCKED) {
     // Make the base body red
     update.x = 440;
     update.y = 239;
@@ -133,7 +141,7 @@ void update_doors() {
     SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
   }
 
-  if(door_status[0] == DOOR_UNLOCKED) {
+  if(state->door_status[0] == DOOR_UNLOCKED) {
     update.x = 420;
     update.y = 263;
     update.w = 21;
@@ -143,7 +151,7 @@ void update_doors() {
     pos.y -= 22;
     SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
   }
-  if(door_status[1] == DOOR_UNLOCKED) {
+  if(state->door_status[1] == DOOR_UNLOCKED) {
     update.x = 484;
     update.y = 261;
     update.w = 21;
@@ -153,7 +161,7 @@ void update_doors() {
     pos.y -= 22;
     SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
   }
-  if(door_status[2] == DOOR_UNLOCKED) {
+  if(state->door_status[2] == DOOR_UNLOCKED) {
     update.x = 420;
     update.y = 284;
     update.w = 21;
@@ -163,7 +171,7 @@ void update_doors() {
     pos.y -= 22;
     SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
   }
-  if(door_status[3] == DOOR_UNLOCKED) {
+  if(state->door_status[3] == DOOR_UNLOCKED) {
     update.x = 484;
     update.y = 287;
     update.w = 21;
@@ -176,7 +184,7 @@ void update_doors() {
 }
 
 /* Updates turn signals */
-void update_turn_signals() {
+void update_turn_signals(CarState* state) {
   SDL_Rect left, right, lpos, rpos;
   left.x = 213;
   left.y = 51;
@@ -191,23 +199,23 @@ void update_turn_signals() {
   rpos.x -= 22;
   rpos.y -= 22;
 
-  if(turn_status[0] == ON) {
+  if(state->turn_status[0] == ON) {
 	SDL_RenderCopy(renderer, sprite_tex, &left, &lpos);
   }
-  if(turn_status[1] == ON) {
+  if(state->turn_status[1] == ON) {
 	SDL_RenderCopy(renderer, sprite_tex, &right, &rpos);
   }
 }
 
 /* Redraws the IC updating everything */
-void redraw_ic() {
+void redraw_ic(CarState* snapshot) {
   // 1. Clear the screen with the base background texture
   blank_ic();
   
   // 2. Draw all dynamic components on top based on their current state
-  update_speed();
-  update_doors();
-  update_turn_signals();
+  update_speed(snapshot);
+  update_doors(snapshot);
+  update_turn_signals(snapshot);
 }
 
 /* Parses CAN fram and updates current_speed */
@@ -215,14 +223,14 @@ void update_speed_status(struct canfd_frame *cf, int maxdlen) {
   int len = (cf->len > maxdlen) ? maxdlen : cf->len;
   if(len < speed_pos + 1) return;
   if (model) {
-	if (!strncmp(model, "bmw", 3)) {
-		current_speed = (((cf->data[speed_pos + 1] - 208) * 256) + cf->data[speed_pos]) / 16;
-	}
+	  if (!strncmp(model, "bmw", 3)) {
+		  car_state.speed = (((cf->data[speed_pos + 1] - 208) * 256) + cf->data[speed_pos]) / 16;
+	  }
   } else {
 	  int speed = cf->data[speed_pos] << 8;
 	  speed += cf->data[speed_pos + 1];
 	  speed = speed / 100; // speed in kilometers
-	  current_speed = speed * 0.6213751; // mph
+	  car_state.speed = speed * 0.6213751; // mph
   }
 }
 
@@ -231,14 +239,14 @@ void update_signal_status(struct canfd_frame *cf, int maxdlen) {
   int len = (cf->len > maxdlen) ? maxdlen : cf->len;
   if(len < signal_pos) return;
   if(cf->data[signal_pos] & CAN_LEFT_SIGNAL) {
-    turn_status[0] = ON;
+    car_state.turn_status[0] = ON;
   } else {
-    turn_status[0] = OFF;
+    car_state.turn_status[0] = OFF;
   }
   if(cf->data[signal_pos] & CAN_RIGHT_SIGNAL) {
-    turn_status[1] = ON;
+    car_state.turn_status[1] = ON;
   } else {
-    turn_status[1] = OFF;
+    car_state.turn_status[1] = OFF;
   }
 }
 
@@ -247,25 +255,53 @@ void update_door_status(struct canfd_frame *cf, int maxdlen) {
   int len = (cf->len > maxdlen) ? maxdlen : cf->len;
   if(len < door_pos) return;
   if(cf->data[door_pos] & CAN_DOOR1_LOCK) {
-	door_status[0] = DOOR_LOCKED;
+	car_state.door_status[0] = DOOR_LOCKED;
   } else {
-	door_status[0] = DOOR_UNLOCKED;
+	car_state.door_status[0] = DOOR_UNLOCKED;
   }
   if(cf->data[door_pos] & CAN_DOOR2_LOCK) {
-	door_status[1] = DOOR_LOCKED;
+	car_state.door_status[1] = DOOR_LOCKED;
   } else {
-	door_status[1] = DOOR_UNLOCKED;
+	car_state.door_status[1] = DOOR_UNLOCKED;
   }
   if(cf->data[door_pos] & CAN_DOOR3_LOCK) {
-	door_status[2] = DOOR_LOCKED;
+	car_state.door_status[2] = DOOR_LOCKED;
   } else {
-	door_status[2] = DOOR_UNLOCKED;
+	car_state.door_status[2] = DOOR_UNLOCKED;
   }
   if(cf->data[door_pos] & CAN_DOOR4_LOCK) {
-	door_status[3] = DOOR_LOCKED;
+	car_state.door_status[3] = DOOR_LOCKED;
   } else {
-	door_status[3] = DOOR_UNLOCKED;
+	car_state.door_status[3] = DOOR_UNLOCKED;
   }
+}
+
+int can_receive_thread(void* arg) {
+  int can_fd = *(int*)arg;
+  struct canfd_frame frame;
+  struct sockaddr_can addr;
+  struct msghdr msg;
+  struct iovec iov = {.iov_base = &frame, .iov_len = sizeof(frame)};
+  char ctrlmsg[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(__u32))];
+  msg.msg_name = &addr;
+  msg.msg_namelen = sizeof(addr);
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control = ctrlmsg;
+  msg.msg_controllen = sizeof(ctrlmsg);
+  msg.msg_flags = 0;
+
+  while (running) {
+    int nbytes = recvmsg(can_fd, &msg, 0);
+    if (nbytes <= 0) continue;
+
+    SDL_LockMutex(state_mutex);
+    if (frame.can_id == door_id) update_door_status(&frame, CAN_MTU);
+    if (frame.can_id == signal_id) update_signal_status(&frame, CAN_MTU);
+    if (frame.can_id == speed_id) update_speed_status(&frame, CAN_MTU);
+    SDL_UnlockMutex(state_mutex);
+    }
+  return 0;
 }
 
 void Usage(char *msg) {
@@ -332,7 +368,6 @@ int main(int argc, char *argv[]) {
   can = socket(PF_CAN, SOCK_RAW, CAN_RAW);
   if(can < 0) Usage("Couldn't create raw socket");
 
-  addr.can_family = AF_CAN;
   memset(&ifr.ifr_name, 0, sizeof(ifr.ifr_name));
   strncpy(ifr.ifr_name, argv[optind], strlen(argv[optind]));
   printf("Using CAN interface %s\n", ifr.ifr_name);
@@ -340,6 +375,7 @@ int main(int argc, char *argv[]) {
     perror("SIOCGIFINDEX");
     exit(1);
   }
+  addr.can_family = AF_CAN;
   addr.can_ifindex = ifr.ifr_ifindex;
   // CAN FD Mode
   setsockopt(can, SOL_CAN_RAW, CAN_RAW_FD_FRAMES, &canfd_on, sizeof(canfd_on));
@@ -358,6 +394,7 @@ int main(int argc, char *argv[]) {
 	perror("bind");
 	return 1;
   }
+  can_thread = SDL_CreateThread(can_receive_thread, "CANThread", &can);
 
   init_car_state();
 
@@ -412,60 +449,28 @@ int main(int argc, char *argv[]) {
   speed_rect.w = needle->w;
 
   // Draw the initial state of the IC
-  redraw_ic();
+  CarState snapshot = car_state;
+  redraw_ic(&snapshot);
   SDL_RenderPresent(renderer);
 
-
-  /* Main Game Loop - VSYNC Synchronized */
-  while(running) {
-    // 1. Handle Events (e.g., closing the window)
-    while( SDL_PollEvent(&event) != 0 ) {
-        switch(event.type) {
-            case SDL_QUIT:
-                running = 0;
-                break;
-            case SDL_WINDOWEVENT:
-            // Window events like resize/expose are handled by the constant redraw
-            break;
-        }
-    }
+  state_mutex = SDL_CreateMutex();
 
     // 2. Handle Network Data (non-blocking) to update state
-    while(1) {
-      nbytes = recvmsg(can, &msg, MSG_DONTWAIT);
-      if (nbytes < 0) {
-        // If no message is available, break the inner loop
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            break; 
+    while (running) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) running = 0;
         }
-        // A real error occurred
-        perror("recvmsg");
-        running = 0;
-        break;
-      }
-      
-      if ((size_t)nbytes == CAN_MTU)
-        maxdlen = CAN_MAX_DLEN;
-      else if ((size_t)nbytes == CANFD_MTU)
-        maxdlen = CANFD_MAX_DLEN;
-      else {
-        fprintf(stderr, "read: incomplete CAN frame\n");
-        continue; // Skip malformed frame
-      }
-      
-      // Update state variables based on message content
-      if(frame.can_id == door_id) update_door_status(&frame, maxdlen);
-      if(frame.can_id == signal_id) update_signal_status(&frame, maxdlen);
-      if(frame.can_id == speed_id) update_speed_status(&frame, maxdlen);
+
+        SDL_LockMutex(state_mutex);
+        snapshot = car_state;
+        SDL_UnlockMutex(state_mutex);
+
+        redraw_ic(&snapshot);
+        SDL_Delay(16); // 約60FPS
     }
 
-    // 3. Render the entire scene based on the current state
-    redraw_ic();
-
-    // 4. Present the backbuffer to the screen, synchronized with VSYNC
-    SDL_RenderPresent(renderer);
-  }
-
+  SDL_WaitThread(can_thread, NULL);
+  SDL_DestroyMutex(state_mutex);
   SDL_DestroyTexture(base_texture);
   SDL_DestroyTexture(needle_tex);
   SDL_DestroyTexture(sprite_tex);
