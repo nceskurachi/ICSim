@@ -207,7 +207,7 @@ void update_turn_signals(CarState* state) {
 void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   // 1. Clear the screen with the base background texture
   if (flags->speed_redraw ){
-    blacnk_ic();
+    blank_ic();
   }
   
   // 2. Draw all dynamic components on top based on their current state
