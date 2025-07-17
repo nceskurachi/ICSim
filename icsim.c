@@ -64,6 +64,11 @@ int signal_pos = DEFAULT_SIGNAL_BYTE;
 int speed_pos = DEFAULT_SPEED_BYTE;
 char *model = NULL;
 char data_file[256];
+int running = 1;
+canid_t door_id = DEFAULT_DOOR_ID;
+canid_t signal_id = DEFAULT_SIGNAL_ID;
+canid_t speed_id = DEFAULT_SPEED_ID;
+
 SDL_Renderer *renderer = NULL;
 SDL_Texture *base_texture = NULL;
 SDL_Texture *needle_tex = NULL;
@@ -326,10 +331,8 @@ int main(int argc, char *argv[]) {
   struct cmsghdr *cmsg;
   struct stat dirstat;
   char ctrlmsg[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(__u32))];
-  int running = 1;
   int nbytes, maxdlen;
   int seed = 0;
-  canid_t door_id, signal_id, speed_id;
   SDL_Event event;
 
   while ((opt = getopt(argc, argv, "rs:dm:h?")) != -1) {
@@ -397,10 +400,6 @@ int main(int argc, char *argv[]) {
   can_thread = SDL_CreateThread(can_receive_thread, "CANThread", &can);
 
   init_car_state();
-
-  door_id = DEFAULT_DOOR_ID;
-  signal_id = DEFAULT_SIGNAL_ID;
-  speed_id = DEFAULT_SPEED_ID;
 
   if (randomize || seed) {
 	if(randomize) seed = time(NULL);
