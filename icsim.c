@@ -225,6 +225,7 @@ void update_turn_signals() {
  * Slowest way to go.  Should only use on init
  */
 void redraw_ic() {
+  SDL_RenderClear(renderer);
   blank_ic();
   update_speed();
   update_doors();
@@ -246,8 +247,6 @@ void update_speed_status(struct canfd_frame *cf, int maxdlen) {
 	  speed = speed / 100; // speed in kilometers
 	  current_speed = speed * 0.6213751; // mph
   }
-  update_speed();
-  SDL_RenderPresent(renderer);
 }
 
 /* Parses CAN frame and updates turn signal status */
@@ -264,8 +263,6 @@ void update_signal_status(struct canfd_frame *cf, int maxdlen) {
   } else {
     turn_status[1] = OFF;
   }
-  update_turn_signals();
-  SDL_RenderPresent(renderer);
 }
 
 /* Parses CAN frame and updates door status */
@@ -292,8 +289,6 @@ void update_door_status(struct canfd_frame *cf, int maxdlen) {
   } else {
 	door_status[3] = DOOR_UNLOCKED;
   }
-  update_doors();
-  SDL_RenderPresent(renderer);
 }
 
 void Usage(char *msg) {
@@ -425,7 +420,7 @@ int main(int argc, char *argv[]) {
   if(window == NULL) {
 	printf("Window could not be shown\n");
   }
-  renderer = SDL_CreateRenderer(window, -1, 0);
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   SDL_Surface *image = IMG_Load(get_data("ic.png"));
   SDL_Surface *needle = IMG_Load(get_data("needle.png"));
   SDL_Surface *sprites = IMG_Load(get_data("spritesheet.png"));
@@ -456,7 +451,6 @@ int main(int argc, char *argv[]) {
 		break;
 	    }
    	}
-      SDL_Delay(3);
     }
 
       nbytes = recvmsg(can, &msg, 0);
@@ -486,6 +480,9 @@ int main(int argc, char *argv[]) {
       if(frame.can_id == door_id) update_door_status(&frame, maxdlen);
       if(frame.can_id == signal_id) update_signal_status(&frame, maxdlen);
       if(frame.can_id == speed_id) update_speed_status(&frame, maxdlen);
+
+      redraw_ic();
+      SDL_Delay(3);
   }
 
   SDL_DestroyTexture(base_texture);
