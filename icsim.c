@@ -144,6 +144,11 @@ void update_doors(CarState* state) {
   const SDL_Point body_size   = {45, 83};
   const SDL_Point door_size   = {21, 22};
 
+  // Draw the white body first
+  SDL_Rect src_white = {body_sprite.x, body_sprite.y, body_size.x, body_size.y};
+  SDL_Rect dst_white = {src_white.x - offset.x, src_white.y - offset.y, src_white.w, src_white.h};
+  SDL_RenderCopy(renderer, sprite_tex, &src_white, &dst_white);
+
   // Red body is drawn if any door is unlocked
   for (int i = 0; i < 4; ++i) {
     if (state->door_status[i] == DOOR_UNLOCKED) {
@@ -429,7 +434,7 @@ int main(int argc, char *argv[]) {
 
   state_mutex = SDL_CreateMutex();
 
-    // 2. Handle Network Data (non-blocking) to update state
+    // 2. Handle drawing and events
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = 0;
