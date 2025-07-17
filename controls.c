@@ -452,7 +452,7 @@ int main(int argc, char *argv[]) {
   struct sockaddr_can addr;
   int running = 1;
   int enable_canfd = 1;
-  int play_traffic = 1;
+  int play_traffic = 0; // Default to OFF
   struct stat st;
   SDL_Event event;
 
@@ -463,6 +463,7 @@ int main(int argc, char *argv[]) {
 		break;
 	case 's':
 		seed = atoi(optarg);
+		play_traffic = 1; // Enable traffic when a seed is provided
 		break;
 	case 't':
 		traffic_log = optarg;
@@ -474,7 +475,7 @@ int main(int argc, char *argv[]) {
 		model = optarg;
 		break;
 	case 'X':
-		play_traffic = 0;
+		play_traffic = 0; // Explicitly disable traffic
 		break;
 	case 'h':
 	case '?':
