@@ -106,8 +106,18 @@ void blank_ic() {
 
 /* Updates speedo */
 void update_speed() {
+  SDL_Rect dial_rect;
   SDL_Point center;
   double angle = 0;
+
+  // First, restore the background behind the needle to erase the old one
+  dial_rect.x = 212;
+  dial_rect.y = 30;
+  dial_rect.h = 195;
+  dial_rect.w = 270;
+  SDL_RenderCopy(renderer, base_texture, &dial_rect, &dial_rect);
+
+  // Now, draw the needle in its new position
   center.x = 135;
   center.y = 20;
   angle = map(current_speed, 0, 280, 0, 180);
@@ -118,10 +128,20 @@ void update_speed() {
 
 /* Updates door unlocks simulated by door open icons */
 void update_doors() {
-  SDL_Rect update, pos;
-  // No update if all doors are locked
+  SDL_Rect door_area, update, pos;
+
+  // First, restore the background for the door indicator area
+  door_area.x = 390;
+  door_area.y = 215;
+  door_area.w = 110;
+  door_area.h = 85;
+  SDL_RenderCopy(renderer, base_texture, &door_area, &door_area);
+
+  // If all doors are locked, we are done.
   if(door_status[0] == DOOR_LOCKED && door_status[1] == DOOR_LOCKED &&
      door_status[2] == DOOR_LOCKED && door_status[3] == DOOR_LOCKED) return;
+  
+  // Otherwise, draw the unlocked indicators
   // Make the base body red if even one door is unlocked
   update.x = 440;
   update.y = 239;
@@ -131,6 +151,7 @@ void update_doors() {
   pos.x -= 22;
   pos.y -= 22;
   SDL_RenderCopy(renderer, sprite_tex, &update, &pos);
+
   if(door_status[0] == DOOR_UNLOCKED) {
     update.x = 420;
     update.y = 263;
@@ -175,19 +196,33 @@ void update_doors() {
 
 /* Updates turn signals */
 void update_turn_signals() {
-  SDL_Rect left, right, lpos, rpos;
+  SDL_Rect left, right, lpos, rpos, left_bg, right_bg;
+
+  // Define the areas for the left and right signals
   left.x = 213;
   left.y = 51;
   left.w = 45;
   left.h = 45;
   memcpy(&right, &left, sizeof(SDL_Rect));
   right.x = 482;
+
+  // Define the destination rectangles on the screen
   memcpy(&lpos, &left, sizeof(SDL_Rect));
   memcpy(&rpos, &right, sizeof(SDL_Rect));
   lpos.x -= 22;
   lpos.y -= 22;
   rpos.x -= 22;
   rpos.y -= 22;
+
+  // Define the background source rectangles
+  memcpy(&left_bg, &lpos, sizeof(SDL_Rect));
+  memcpy(&right_bg, &rpos, sizeof(SDL_Rect));
+
+  // Always restore the background for both signals first
+  SDL_RenderCopy(renderer, base_texture, &left_bg, &lpos);
+  SDL_RenderCopy(renderer, base_texture, &right_bg, &rpos);
+
+  // Then, draw the "ON" state if needed
   if(turn_status[0] == ON) {
 	SDL_RenderCopy(renderer, sprite_tex, &left, &lpos);
   }
@@ -196,11 +231,8 @@ void update_turn_signals() {
   }
 }
 
-/* Redraws the IC updating everything 
- * Slowest way to go.  Should only use on init
- */
+/* Redraws the IC updating everything */
 void redraw_ic() {
-  SDL_RenderClear(renderer);
   blank_ic();
   update_speed();
   update_doors();
@@ -222,6 +254,8 @@ void update_speed_status(struct canfd_frame *cf, int maxdlen) {
 	  speed = speed / 100; // speed in kilometers
 	  current_speed = speed * 0.6213751; // mph
   }
+  update_speed();
+  SDL_RenderPresent(renderer);
 }
 
 /* Parses CAN frame and updates turn signal status */
@@ -238,6 +272,8 @@ void update_signal_status(struct canfd_frame *cf, int maxdlen) {
   } else {
     turn_status[1] = OFF;
   }
+  update_turn_signals();
+  SDL_RenderPresent(renderer);
 }
 
 /* Parses CAN frame and updates door status */
@@ -264,6 +300,8 @@ void update_door_status(struct canfd_frame *cf, int maxdlen) {
   } else {
 	door_status[3] = DOOR_UNLOCKED;
   }
+  update_doors();
+  SDL_RenderPresent(renderer);
 }
 
 void Usage(char *msg) {
@@ -413,16 +451,9 @@ int main(int argc, char *argv[]) {
   // Draw the IC
   redraw_ic();
 
-  const int FPS = 60;
-  const int FRAME_DELAY = 1000 / FPS;
-  Uint32 frame_start;
-  int frame_time;
-
   /* For now we will just operate on one CAN interface */
   while(running) {
-    frame_start = SDL_GetTicks();
-
-    // Handle Events
+    // Handle SDL Events
     while( SDL_PollEvent(&event) != 0 ) {
         switch(event.type) {
             case SDL_QUIT:
@@ -438,43 +469,26 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Handle Network Data (non-blocking)
-    while(1) {
-      nbytes = recvmsg(can, &msg, MSG_DONTWAIT);
-      if (nbytes < 0) {
-        // EAGAIN or EWOULDBLOCK means no more messages right now.
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            break; 
-        }
-        perror("recvmsg");
-        running = 0; // Exit on real error
-        break;
-      }
-
-      if ((size_t)nbytes == CAN_MTU)
-        maxdlen = CAN_MAX_DLEN;
-      else if ((size_t)nbytes == CANFD_MTU)
-        maxdlen = CANFD_MAX_DLEN;
-      else {
-        fprintf(stderr, "read: incomplete CAN frame\n");
-        running = 0;
-        break;
-      }
-
-      //      if(debug) fprint_canframe(stdout, &frame, "\n", 0, maxdlen);
-      if(frame.can_id == door_id) update_door_status(&frame, maxdlen);
-      if(frame.can_id == signal_id) update_signal_status(&frame, maxdlen);
-      if(frame.can_id == speed_id) update_speed_status(&frame, maxdlen);
+    // Handle CAN messages
+    nbytes = recvmsg(can, &msg, 0);
+    if (nbytes < 0) {
+      perror("read");
+      running = 0;
+      continue;
+    }  
+    if ((size_t)nbytes == CAN_MTU)
+      maxdlen = CAN_MAX_DLEN;
+    else if ((size_t)nbytes == CANFD_MTU)
+      maxdlen = CANFD_MAX_DLEN;
+    else {
+      fprintf(stderr, "read: incomplete CAN frame\n");
+      running = 0;
+      continue;
     }
 
-    // Redraw the screen
-    redraw_ic();
-
-    // Frame Limiter
-    frame_time = SDL_GetTicks() - frame_start;
-    if (FRAME_DELAY > frame_time) {
-        SDL_Delay(FRAME_DELAY - frame_time);
-    }
+    if(frame.can_id == door_id) update_door_status(&frame, maxdlen);
+    if(frame.can_id == signal_id) update_signal_status(&frame, maxdlen);
+    if(frame.can_id == speed_id) update_speed_status(&frame, maxdlen);
   }
 
   SDL_DestroyTexture(base_texture);
