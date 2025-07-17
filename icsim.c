@@ -201,11 +201,13 @@ void update_turn_signals() {
 
 /* Redraws the IC updating everything */
 void redraw_ic() {
+  // 1. Clear the screen with the base background texture
   blank_ic();
+  
+  // 2. Draw all dynamic components on top based on their current state
   update_speed();
   update_doors();
   update_turn_signals();
-  SDL_RenderPresent(renderer);
 }
 
 /* Parses CAN fram and updates current_speed */
@@ -387,7 +389,7 @@ int main(int argc, char *argv[]) {
   }
 
   SDL_Window *window = NULL;
-  SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
+  SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
   if(SDL_Init ( SDL_INIT_VIDEO ) < 0 ) {
 	printf("SDL Could not initializes\n");
 	exit(40);
@@ -410,36 +412,30 @@ int main(int argc, char *argv[]) {
   speed_rect.h = needle->h;
   speed_rect.w = needle->w;
 
-  // Draw the IC
+  // Draw the initial state of the IC
   redraw_ic();
+  SDL_RenderPresent(renderer);
 
-  const int FPS = 60;
-  const int FRAME_DELAY = 1000 / FPS;
-  Uint32 frame_start;
-  int frame_time;
 
-  /* Main Game Loop */
+  /* Main Game Loop - VSYNC Synchronized */
   while(running) {
-    frame_start = SDL_GetTicks();
-
-    // 1. Handle Events
+    // 1. Handle Events (e.g., closing the window)
     while( SDL_PollEvent(&event) != 0 ) {
         switch(event.type) {
             case SDL_QUIT:
                 running = 0;
                 break;
             case SDL_WINDOWEVENT:
-            // Window events are handled by the constant redraw, so no special action needed
+            // Window events like resize/expose are handled by the constant redraw
             break;
         }
     }
 
-    // 2. Handle Network Data (Update State)
-    // Use a non-blocking loop to drain all pending CAN messages
+    // 2. Handle Network Data (non-blocking) to update state
     while(1) {
       nbytes = recvmsg(can, &msg, MSG_DONTWAIT);
       if (nbytes < 0) {
-        // No more messages to read for now
+        // If no message is available, break the inner loop
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             break; 
         }
@@ -447,29 +443,28 @@ int main(int argc, char *argv[]) {
         perror("recvmsg");
         running = 0;
         break;
-      }  
+      }
+      
       if ((size_t)nbytes == CAN_MTU)
         maxdlen = CAN_MAX_DLEN;
       else if ((size_t)nbytes == CANFD_MTU)
         maxdlen = CANFD_MAX_DLEN;
       else {
         fprintf(stderr, "read: incomplete CAN frame\n");
-        continue; // Skip this frame
+        continue; // Skip malformed frame
       }
       
+      // Update state variables based on message content
       if(frame.can_id == door_id) update_door_status(&frame, maxdlen);
       if(frame.can_id == signal_id) update_signal_status(&frame, maxdlen);
       if(frame.can_id == speed_id) update_speed_status(&frame, maxdlen);
     }
 
-    // 3. Render the scene
+    // 3. Render the entire scene based on the current state
     redraw_ic();
 
-    // 4. Pace the loop to maintain a constant frame rate
-    frame_time = SDL_GetTicks() - frame_start;
-    if (FRAME_DELAY > frame_time) {
-        SDL_Delay(FRAME_DELAY - frame_time);
-    }
+    // 4. Present the backbuffer to the screen, synchronized with VSYNC
+    SDL_RenderPresent(renderer);
   }
 
   SDL_DestroyTexture(base_texture);
