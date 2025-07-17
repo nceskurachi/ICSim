@@ -451,7 +451,7 @@ int main(int argc, char *argv[]) {
   if(window == NULL) {
 	printf("Window could not be shown\n");
   }
-  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
   SDL_Surface *image = IMG_Load(get_data("ic.png"));
   SDL_Surface *needle = IMG_Load(get_data("needle.png"));
   SDL_Surface *sprites = IMG_Load(get_data("spritesheet.png"));
