@@ -206,7 +206,7 @@ void update_turn_signals(CarState* state) {
 /* Redraws the IC updating everything */
 void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   // 1. Clear the screen with the base background texture
-  if (flags->speed_redraw ){
+  if (flags->speed_redraw || flags->doors_redraw || flags->turn_redraw) {
     blank_ic();
   }
   
