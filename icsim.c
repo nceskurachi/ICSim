@@ -2,6 +2,7 @@
  * Instrument cluster simulator
  *
  * (c) 2014 Open Garages - Craig Smith <craig@theialabs.com>
+ * (c) 2025 NCES - Ryo Kurachi <kurachi@nces.i.nagoya-u.ac.jp>
  */
 
 #include <stdio.h>
@@ -22,40 +23,12 @@
 #include <errno.h>
 
 #include "lib.h"
+#include "icsim.h"
 
 #ifndef DATA_DIR
 #define DATA_DIR "./data/"  // Needs trailing slash
 #endif
 
-#define SCREEN_WIDTH 692
-#define SCREEN_HEIGHT 329
-#define DOOR_LOCKED 0
-#define DOOR_UNLOCKED 1
-#define OFF 0
-#define ON 1
-#define DEFAULT_DOOR_ID 411 // 0x19b
-#define DEFAULT_DOOR_BYTE 2
-#define CAN_DOOR1_LOCK 1
-#define CAN_DOOR2_LOCK 2 
-#define CAN_DOOR3_LOCK 4
-#define CAN_DOOR4_LOCK 8
-#define DEFAULT_SIGNAL_ID 392 // 0x188
-#define DEFAULT_SIGNAL_BYTE 0
-#define CAN_LEFT_SIGNAL 1
-#define CAN_RIGHT_SIGNAL 2
-#define DEFAULT_SPEED_ID 580 // 0x244
-#define DEFAULT_SPEED_BYTE 3 // bytes 3,4
-
-// For now, specific models will be done as constants.  Later
-// We should use a config file
-#define MODEL_BMW_X1_SPEED_ID 0x1B4
-#define MODEL_BMW_X1_SPEED_BYTE 0
-#define MODEL_BMW_X1_RPM_ID 0x0AA
-#define MODEL_BMW_X1_RPM_BYTE 4
-#define MODEL_BMW_X1_HANDBRAKE_ID 0x1B4  // Not implemented yet
-#define MODEL_BMW_X1_HANDBRAKE_BYTE 5
-#define TARGET_FPS 60
-#define FRAME_DELAY_MS (1000 / TARGET_FPS)
 
 const int canfd_on = 1;
 int debug = 0;
@@ -75,26 +48,25 @@ SDL_Renderer *renderer = NULL;
 SDL_Texture *base_texture = NULL;
 SDL_Texture *needle_tex = NULL;
 SDL_Texture *sprite_tex = NULL;
+SDL_Texture *lock_tex = NULL;
+SDL_Texture *unlock_tex = NULL;
+
 SDL_Rect speed_rect;
 SDL_Thread* can_thread = NULL;
 SDL_mutex* state_mutex;
 
-typedef struct {
-  long speed;
-  int door_status[4];
-  int turn_status[2];
-} CarState;
-
+// Global car state
 CarState car_state;
+// Redraw flags
+RedrawFlags redraw_flags = {1, 1, 1, 1};
 
-typedef struct {
-  int speed_redraw;
-  int doors_redraw;
-  int turn_redraw;
-} RedrawFlags;
-
-RedrawFlags redraw_flags = {1, 1, 1};
-
+// Security context for UDS Security Access
+SecurityContext sec_ctx = {
+  .state = SEC_STATE_IDLE,
+  .seed = 0,
+  .seed_sent_time = 0,
+  .timeout_ms = 10000  // 10 seconds
+};
 
 // Simple map function
 long map(long x, long in_min, long in_max, long out_min, long out_max)
@@ -114,12 +86,14 @@ char *get_data(char *fname) {
 
 /* Default vehicle state */
 void init_car_state() {
+  car_state.speed = 0;
   car_state.door_status[0] = DOOR_LOCKED;
   car_state.door_status[1] = DOOR_LOCKED;
   car_state.door_status[2] = DOOR_LOCKED;
   car_state.door_status[3] = DOOR_LOCKED;
   car_state.turn_status[0] = OFF;
   car_state.turn_status[1] = OFF;
+  car_state.lock_status = ON;
 }
 
 /* Empty IC */
@@ -203,8 +177,27 @@ void update_turn_signals(CarState* state) {
   }
 }
 
+void update_lock_icon(CarState* state) {
+  int any_unlocked = 0;
+  for (int i = 0; i < 4; ++i) {
+    if (state->door_status[i] == DOOR_UNLOCKED) {
+      any_unlocked = 1;
+      break;
+    }
+  }
+
+  SDL_Rect icon_rect = {600, 20, 32, 32}; // 表示位置を任意に調整
+  if (any_unlocked) {
+    SDL_RenderCopy(renderer, unlock_tex, NULL, &icon_rect);
+  } else {
+    SDL_RenderCopy(renderer, lock_tex, NULL, &icon_rect);
+  }
+}
+
 /* Redraws the IC updating everything */
 void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
+  SDL_Rect lock_icon_rect = { 600, 20, 32, 32 };
+
   // 1. Clear the screen with the base background texture
   if (flags->speed_redraw || flags->doors_redraw || flags->turn_redraw) {
     blank_ic();
@@ -220,7 +213,11 @@ void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   if (flags->turn_redraw ){
     update_turn_signals(snapshot);
   }
+  if (flags->lock_redraw) {
+    update_lock_icon(snapshot);
+  }
 }
+
 
 /* Parses CAN fram and updates current_speed */
 void update_speed_status(struct canfd_frame *cf, int maxdlen) {
@@ -287,6 +284,8 @@ int can_receive_thread(void* arg) {
   struct msghdr msg;
   struct iovec iov = {.iov_base = &frame, .iov_len = sizeof(frame)};
   char ctrlmsg[CMSG_SPACE(sizeof(struct timeval)) + CMSG_SPACE(sizeof(__u32))];
+  extern SecurityContext sec_ctx;
+
   msg.msg_name = &addr;
   msg.msg_namelen = sizeof(addr);
   msg.msg_iov = &iov;
@@ -303,6 +302,7 @@ int can_receive_thread(void* arg) {
     if (frame.can_id == door_id) update_door_status(&frame, CAN_MTU);
     if (frame.can_id == signal_id) update_signal_status(&frame, CAN_MTU);
     if (frame.can_id == speed_id) update_speed_status(&frame, CAN_MTU);
+    if (frame.can_id == UDS_DIAG_ID) update_security_status(&frame, CAN_MTU, can_fd, &sec_ctx);
     SDL_UnlockMutex(state_mutex);
     }
   return 0;
@@ -331,6 +331,85 @@ void update_redraw_flags(CarState* prev, CarState* curr, RedrawFlags* flags) {
   for (int i = 0; i < 2; ++i)
     if (prev->turn_status[i] != curr->turn_status[i])
       flags->turn_redraw = 1;
+
+  flags->lock_redraw = (prev->lock_status != curr->lock_status);
+}
+
+
+// UDS Security Access simulation
+#define EXPECTED_KEY 0x5A
+
+void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, SecurityContext* ctx) {
+  if (cf->len < 2) return;
+
+  Uint8 sid = cf->data[0];
+  Uint8 subfn = cf->data[1];
+  Uint32 now = SDL_GetTicks();
+
+  struct canfd_frame resp;
+  memset(&resp, 0, sizeof(resp));
+  resp.can_id = 0x7E8;
+  resp.len = 3;
+
+  if (sid != UDS_SECURITY_REQ) return;
+
+  if (subfn == UDS_SECURITY_REQ_SEED) {
+    ctx->seed = generate_seed();
+    ctx->state = SEC_STATE_WAIT_KEY;
+    ctx->seed_sent_time = now;
+
+    resp.data[0] = 0x67;
+    resp.data[1] = subfn;
+    resp.data[2] = ctx->seed;
+    write(can_fd, &resp, sizeof(resp));
+    printf("[UDS] Sent seed: 0x%02X\n", ctx->seed);
+  }
+  else if (subfn == UDS_SECURITY_REQ_KEY && ctx->state == SEC_STATE_WAIT_KEY) {
+    if (now - ctx->seed_sent_time > ctx->timeout_ms) {
+      ctx->state = SEC_STATE_IDLE;
+      printf("[UDS] Timeout expired\n");
+      return;
+    }
+
+    if (cf->len < 3) return;
+
+    Uint8 key = cf->data[2];
+    Uint8 expected = calculate_key(ctx->seed);
+
+    if (key == expected) {
+      car_state.lock_status = DOOR_UNLOCKED;
+      ctx->state = SEC_STATE_IDLE;
+
+      resp.data[0] = 0x67;
+      resp.data[1] = subfn;
+      resp.data[2] = 0x00;
+      write(can_fd, &resp, sizeof(resp));
+      printf("[UDS] Key correct. Unlocked.\n");
+    } else {
+      resp.data[0] = 0x7F;
+      resp.data[1] = UDS_SECURITY_REQ;
+      resp.data[2] = 0x35;
+      write(can_fd, &resp, sizeof(resp));
+      printf("[UDS] Invalid key: 0x%02X (expected: 0x%02X)\n", key, expected);
+    }
+  }
+}
+
+void update_lock_icon(CarState* state) {
+  SDL_Rect icon_rect = {600, 20, 32, 32};
+  if (state->lock_status == OFF) {
+    SDL_RenderCopy(renderer, unlock_tex, NULL, &icon_rect);
+  } else {
+    SDL_RenderCopy(renderer, lock_tex, NULL, &icon_rect);
+  }
+}
+
+Uint8 generate_seed() {
+  return rand() % 256;
+}
+
+Uint8 calculate_key(Uint8 seed) {
+  return seed ^ 0xAA; // Simple XOR operation for key generation
 }
 
 
@@ -455,9 +534,13 @@ int main(int argc, char *argv[]) {
   SDL_Surface *image = IMG_Load(get_data("ic.png"));
   SDL_Surface *needle = IMG_Load(get_data("needle.png"));
   SDL_Surface *sprites = IMG_Load(get_data("spritesheet.png"));
+  SDL_Surface *lock = IMG_Load(get_data("lock.png"));
+  SDL_Surface *unlock = IMG_Load(get_data("unlock.png"));
   base_texture = SDL_CreateTextureFromSurface(renderer, image);
   needle_tex = SDL_CreateTextureFromSurface(renderer, needle);
   sprite_tex = SDL_CreateTextureFromSurface(renderer, sprites);
+  lock_tex = SDL_CreateTextureFromSurface(renderer, lock);
+  unlock_tex = SDL_CreateTextureFromSurface(renderer, unlock);
 
   speed_rect.x = 212;
   speed_rect.y = 175;
@@ -486,7 +569,8 @@ int main(int argc, char *argv[]) {
     // 3. Check if the state has changed and redraw if necessary
     update_redraw_flags(&prev_snapshot, &snapshot, &redraw_flags);
 
-    if (redraw_flags.speed_redraw || redraw_flags.doors_redraw || redraw_flags.turn_redraw) {
+    if (redraw_flags.speed_redraw || redraw_flags.doors_redraw ||
+       redraw_flags.turn_redraw || redraw_flags.lock_redraw) {
       redraw_ic(&snapshot, &redraw_flags);
       SDL_RenderPresent(renderer);
       prev_snapshot = snapshot;
@@ -507,6 +591,8 @@ int main(int argc, char *argv[]) {
   SDL_FreeSurface(image);
   SDL_FreeSurface(needle);
   SDL_FreeSurface(sprites);
+  SDL_FreeSurface(lock);
+  SDL_FreeSurface(unlock);
   SDL_DestroyRenderer(renderer);
   SDL_DestroyWindow(window);
   IMG_Quit();
