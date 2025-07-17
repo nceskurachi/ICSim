@@ -54,6 +54,8 @@
 #define MODEL_BMW_X1_RPM_BYTE 4
 #define MODEL_BMW_X1_HANDBRAKE_ID 0x1B4  // Not implemented yet
 #define MODEL_BMW_X1_HANDBRAKE_BYTE 5
+#define TARGET_FPS 60
+#define FRAME_DELAY_MS (1000 / TARGET_FPS)
 
 const int canfd_on = 1;
 int debug = 0;
@@ -315,6 +317,9 @@ int main(int argc, char *argv[]) {
   int seed = 0;
   SDL_Event event;
 
+  Uint32 frame_start;
+  int frame_time;
+
   while ((opt = getopt(argc, argv, "rs:dm:h?")) != -1) {
     switch(opt) {
 	case 'r':
@@ -434,19 +439,24 @@ int main(int argc, char *argv[]) {
 
   state_mutex = SDL_CreateMutex();
 
-    // 2. Handle drawing and events
-    while (running) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) running = 0;
-        }
-
-        SDL_LockMutex(state_mutex);
-        snapshot = car_state;
-        SDL_UnlockMutex(state_mutex);
-
-        redraw_ic(&snapshot);
-        SDL_Delay(16); // 約60FPS
+  // 2. Handle drawing and events
+  while (running) {
+    frame_start = SDL_GetTicks();
+    while (SDL_PollEvent(&event)) {
+      if (event.type == SDL_QUIT) running = 0;
     }
+
+    SDL_LockMutex(state_mutex);
+    snapshot = car_state;
+    SDL_UnlockMutex(state_mutex);
+
+    redraw_ic(&snapshot);
+    SDL_RenderPresent(renderer); 
+    frame_time = SDL_GetTicks() - frame_start;
+    if (frame_time < FRAME_DELAY_MS) {
+      SDL_Delay(FRAME_DELAY_MS - frame_time);
+    }
+  }
 
   SDL_WaitThread(can_thread, NULL);
   SDL_DestroyMutex(state_mutex);
