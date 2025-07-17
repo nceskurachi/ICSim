@@ -440,8 +440,15 @@ int main(int argc, char *argv[]) {
   // Draw the IC
   redraw_ic();
 
+  const int FPS = 60;
+  const int FRAME_DELAY = 1000 / FPS;
+  Uint32 frame_start;
+  int frame_time;
+
   /* For now we will just operate on one CAN interface */
   while(running) {
+    frame_start = SDL_GetTicks();
+
     // Handle Events
     while( SDL_PollEvent(&event) != 0 ) {
         switch(event.type) {
@@ -489,7 +496,12 @@ int main(int argc, char *argv[]) {
 
     // Redraw the screen
     redraw_ic();
-    // VSync, enabled in SDL_CreateRenderer, will handle pacing.
+
+    // Frame Limiter
+    frame_time = SDL_GetTicks() - frame_start;
+    if (FRAME_DELAY > frame_time) {
+        SDL_Delay(FRAME_DELAY - frame_time);
+    }
   }
 
   SDL_DestroyTexture(base_texture);
