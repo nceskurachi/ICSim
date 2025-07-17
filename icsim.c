@@ -302,6 +302,16 @@ void Usage(char *msg) {
   exit(1);
 }
 
+int is_state_changed(CarState* prev, CarState* current) {
+  if (prev->speed != current->speed) return 1;
+  for (int i = 0; i < 4; ++i)
+    if (prev->door_status[i] != current->door_status[i]) return 1;
+  for (int i = 0; i < 2; ++i)
+    if (prev->turn_status[i] != current->turn_status[i]) return 1;
+  return 0;
+}
+
+
 int main(int argc, char *argv[]) {
   setlocale(LC_ALL, "C");
   int opt;
@@ -434,6 +444,7 @@ int main(int argc, char *argv[]) {
 
   // Draw the initial state of the IC
   CarState snapshot = car_state;
+  CarState prev_snapshot = car_state;
   redraw_ic(&snapshot);
   SDL_RenderPresent(renderer);
 
@@ -450,8 +461,14 @@ int main(int argc, char *argv[]) {
     snapshot = car_state;
     SDL_UnlockMutex(state_mutex);
 
-    redraw_ic(&snapshot);
-    SDL_RenderPresent(renderer); 
+    // 3. Check if the state has changed and redraw if necessary
+    if (is_state_changed(&prev_snapshot, &snapshot)) {
+      redraw_ic(&snapshot);
+      SDL_RenderPresent(renderer);
+      prev_snapshot = snapshot;
+    }
+
+    // 4. Delay to maintain target FPS
     frame_time = SDL_GetTicks() - frame_start;
     if (frame_time < FRAME_DELAY_MS) {
       SDL_Delay(FRAME_DELAY_MS - frame_time);
