@@ -447,6 +447,7 @@ void usage(char *msg) {
 }
 
 int main(int argc, char *argv[]) {
+  setlocale(LC_ALL, "C");
   int opt;
   struct sockaddr_can addr;
   int running = 1;
