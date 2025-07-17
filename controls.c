@@ -576,6 +576,7 @@ int main(int argc, char *argv[]) {
 
   // GUI Setup
   SDL_Window *window = NULL;
+  SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
   if(SDL_Init ( SDL_INIT_VIDEO | SDL_INIT_JOYSTICK ) < 0 ) {
         printf("SDL Could not initializes\n");
         exit(40);
