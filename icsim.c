@@ -106,26 +106,8 @@ void blank_ic() {
 
 /* Updates speedo */
 void update_speed() {
-  SDL_Rect dial_rect;
   SDL_Point center;
   double angle = 0;
-  dial_rect.x = 200;
-  dial_rect.y = 80;
-  dial_rect.h = 130;
-  dial_rect.w = 300;
-  SDL_RenderCopy(renderer, base_texture, &dial_rect, &dial_rect);
-  /* Because it's a curve we do a smaller rect for the top */
-  dial_rect.x = 250;
-  dial_rect.y = 30;
-  dial_rect.h = 65;
-  dial_rect.w = 200;
-  SDL_RenderCopy(renderer, base_texture, &dial_rect, &dial_rect);
-  // And one more smaller box for the pivot point of the needle
-  dial_rect.x = 323;
-  dial_rect.y = 171;
-  dial_rect.h = 52;
-  dial_rect.w = 47;
-  SDL_RenderCopy(renderer, base_texture, &dial_rect, &dial_rect);
   center.x = 135;
   center.y = 20;
   angle = map(current_speed, 0, 280, 0, 180);
@@ -136,12 +118,7 @@ void update_speed() {
 
 /* Updates door unlocks simulated by door open icons */
 void update_doors() {
-  SDL_Rect door_area, update, pos;
-  door_area.x = 390;
-  door_area.y = 215;
-  door_area.w = 110;
-  door_area.h = 85;
-  SDL_RenderCopy(renderer, base_texture, &door_area, &door_area);
+  SDL_Rect update, pos;
   // No update if all doors are locked
   if(door_status[0] == DOOR_LOCKED && door_status[1] == DOOR_LOCKED &&
      door_status[2] == DOOR_LOCKED && door_status[3] == DOOR_LOCKED) return;
@@ -211,14 +188,10 @@ void update_turn_signals() {
   lpos.y -= 22;
   rpos.x -= 22;
   rpos.y -= 22;
-  if(turn_status[0] == OFF) {
-	SDL_RenderCopy(renderer, base_texture, &lpos, &lpos);
-  } else {
+  if(turn_status[0] == ON) {
 	SDL_RenderCopy(renderer, sprite_tex, &left, &lpos);
   }
-  if(turn_status[1] == OFF) {
-	SDL_RenderCopy(renderer, base_texture, &rpos, &rpos);
-  } else {
+  if(turn_status[1] == ON) {
 	SDL_RenderCopy(renderer, sprite_tex, &right, &rpos);
   }
 }
