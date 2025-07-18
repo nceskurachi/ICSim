@@ -1,0 +1,18 @@
+Checks: >
+  clang-analyzer-*,
+  bugprone-*,
+  readability-*,
+  performance-*,
+  portability-*,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-naming,
+  -google-readability-braces-around-statements,
+  -llvm-header-guard
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
+FormatStyle: file
+CheckOptions:
+  - key:             modernize-use-nullptr.NullMacros
+    value:           'NULL'

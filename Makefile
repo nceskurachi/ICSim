@@ -15,3 +15,19 @@ lib.o:
 
 clean:
 	rm -rf icsim controls icsim.o controls.o
+
+format:
+	clang-format -i $(SRC)
+
+tidy:
+	clang-tidy $(SRC) -- -I. $(CFLAGS)
+
+cppcheck:
+	cppcheck --enable=all --inconclusive --force --std=c99 --language=c --quiet \
+	  --suppress=missingIncludeSystem \
+	  *.c *.h
+
+lint: tidy cppcheck format
+
+check: all lint
+

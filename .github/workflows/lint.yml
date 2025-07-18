@@ -1,0 +1,31 @@
+name: Lint and Static Analysis
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format clang-tidy cppcheck libsdl2-dev libsdl2-image-dev
+
+      - name: Run clang-format check
+        run: |
+          echo "Checking formatting..."
+          clang-format --dry-run --Werror *.c *.h
+
+      - name: Run clang-tidy
+        run: |
+          echo "Running clang-tidy..."
+          clang-tidy *.c -- -I. -std=c99
+
+      - name: Run cppcheck
+        run: |
+          echo "Running cppcheck..."
+          cppcheck --enable=all --inconclusive --force --quiet --std=c99 --language=c --suppress=missingIncludeSystem *.c *.h
