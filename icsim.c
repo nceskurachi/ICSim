@@ -387,61 +387,89 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
   struct canfd_frame resp;
   memset(&resp, 0, sizeof(resp));
   resp.can_id = 0x7E8;
-  resp.len = 3;
 
   if (sid != UDS_SECURITY_REQ) return;
 
   if (subfn == UDS_SECURITY_REQ_SEED) {
     ctx->seed = generate_seed();
-    ctx->state = SEC_STATE_WAIT_KEY;
     ctx->seed_sent_time = now;
 
+    // 状態遷移
+    if (ctx->state == SEC_STATE_LOCKED_NO_SEED)
+      ctx->state = SEC_STATE_LOCKED_WAIT_KEY;
+    else if (ctx->state == SEC_STATE_UNLOCKED_NO_SEED)
+      ctx->state = SEC_STATE_UNLOCKED_WAIT_KEY;
+
+    resp.len = 6;
     resp.data[0] = 0x67;
     resp.data[1] = subfn;
     resp.data[2] = ctx->seed;
-    send_can_response(resp.can_id, resp.data, 3, can_fd);
-    printf("[UDS] Sent seed: 0x%02X\n", ctx->seed);
+    resp.data[3] = ctx->seed;
+    resp.data[4] = ctx->seed;
+    resp.data[5] = 0x00;
+
+    send_can_response(resp.can_id, resp.data, resp.len, can_fd);
+    printf("[UDS] Sent seed: 0x%02X (subfn: 0x%02X, state: %d)\n", ctx->seed, subfn, ctx->state);
   }
-  else if (subfn == UDS_SECURITY_REQ_KEY && ctx->state == SEC_STATE_WAIT_KEY) {
-    if (now - ctx->seed_sent_time > ctx->timeout_ms) {
-      ctx->state = SEC_STATE_IDLE;
-      printf("[UDS] Timeout expired\n");
+
+  else if (subfn == UDS_SECURITY_REQ_KEY) {
+    if (ctx->state != SEC_STATE_LOCKED_WAIT_KEY && ctx->state != SEC_STATE_UNLOCKED_WAIT_KEY) {
+      printf("[UDS] Key received in invalid state\n");
       return;
     }
 
-    if (cf->len < 3) return;
+    if (now - ctx->seed_sent_time > ctx->timeout_ms) {
+      ctx->state = SEC_STATE_LOCKED_NO_SEED;
+      printf("[UDS] Timeout\n");
+      return;
+    }
 
-    Uint8 key = cf->data[2];
-    Uint8 expected = calculate_key(ctx->seed);
+    if (cf->len < 5) return; // SID, SubFn, key[0], key[1], key[2]
 
-    if (key == expected) {
+    Uint8 recv_key[3] = {cf->data[2], cf->data[3], cf->data[4]};
+    Uint8 expected_key[3];
+    calculate_key(ctx->seed, expected_key);
+
+    if (recv_key[0] == expected_key[0] &&
+        recv_key[1] == expected_key[1] &&
+        recv_key[2] == expected_key[2]) {
+
       car_state.lock_status = OFF;
       car_state.unlock_time = SDL_GetTicks();
-      ctx->state = SEC_STATE_IDLE;
+      ctx->seed = 0;
+      ctx->state = SEC_STATE_UNLOCKED_NO_SEED;
 
+      resp.len = 2;
       resp.data[0] = 0x67;
       resp.data[1] = subfn;
-      resp.data[2] = 0x00;
-      send_can_response(resp.can_id, resp.data, 3, can_fd);
+      send_can_response(resp.can_id, resp.data, resp.len, can_fd);
       printf("[UDS] Key correct. Unlocked.\n");
+
     } else {
       car_state.lock_status = ON;
+      ctx->seed = 0;
+      ctx->state = SEC_STATE_LOCKED_NO_SEED;
+
+      resp.len = 3;
       resp.data[0] = 0x7F;
       resp.data[1] = UDS_SECURITY_REQ;
-      resp.data[2] = 0x35;
-      send_can_response(resp.can_id, resp.data, 3, can_fd);
-      printf("[UDS] Invalid key: 0x%02X (expected: 0x%02X)\n", key, expected);
+      resp.data[2] = 0x35; // NRC: invalid key
+      send_can_response(resp.can_id, resp.data, resp.len, can_fd);
+      printf("[UDS] Invalid key: %02X %02X %02X (expected: %02X %02X %02X)\n",
+             recv_key[0], recv_key[1], recv_key[2],
+             expected_key[0], expected_key[1], expected_key[2]);
     }
   }
 }
-
 
 Uint8 generate_seed() {
   return rand() % 256;
 }
 
-Uint8 calculate_key(Uint8 seed) {
-  return seed ^ 0xAA; // Simple XOR operation for key generation
+void calculate_key(Uint8 seed, Uint8* key_out) {
+    key_out[0] = seed ^ 0xAA;
+    key_out[1] = (seed + 1) ^ 0xAA;
+    key_out[2] = (seed + 2) ^ 0xAA;
 }
 
 
@@ -610,7 +638,7 @@ int main(int argc, char *argv[]) {
     // 4. Update the lock status if it is ON
     if (snapshot.lock_status == OFF) {
       Uint32 now = SDL_GetTicks();
-      if (now - snapshot.unlock_time > 30000) {  // 30秒経過
+      if (now - snapshot.unlock_time > 30000) {  // 30 seconds
         SDL_LockMutex(state_mutex);
         car_state.lock_status = ON;
         SDL_UnlockMutex(state_mutex);

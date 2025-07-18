@@ -74,8 +74,15 @@ typedef struct {
 } RedrawFlags;
 
 // Security context (UDS SecurityAccess)
+typedef enum {
+  SEC_STATE_LOCKED_NO_SEED = 0,     // A: 全ロック・シード未発行
+  SEC_STATE_LOCKED_WAIT_KEY,        // B: 全ロック・シード発行・キー待ち
+  SEC_STATE_UNLOCKED_NO_SEED,       // C: 一部アンロック・シード未発行
+  SEC_STATE_UNLOCKED_WAIT_KEY       // D: 一部アンロック・シード発行・キー待ち
+} SecurityState;
+
 typedef struct {
-  enum { SEC_STATE_IDLE, SEC_STATE_WAIT_KEY } state;
+  SecurityState state;
   Uint8 seed;
   Uint32 seed_sent_time;
   Uint32 timeout_ms;
