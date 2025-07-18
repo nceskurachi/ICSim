@@ -62,7 +62,7 @@ RedrawFlags redraw_flags = {1, 1, 1, 1};
 
 // Security context for UDS Security Access
 SecurityContext sec_ctx = {
-  .state = SEC_STATE_IDLE,
+  .state = SEC_STATE_LOCKED_NO_SEED,
   .seed = 0,
   .seed_sent_time = 0,
   .timeout_ms = 10000  // 10 seconds
