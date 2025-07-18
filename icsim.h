@@ -119,7 +119,7 @@ void update_redraw_flags(CarState* prev, CarState* curr, RedrawFlags* flags);
 int send_can_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd);
 int send_canfd_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd);
 Uint8 generate_seed(void);
-Uint8 calculate_key(Uint8 seed);
+void calculate_key(Uint8 seed, Uint8* key_out);
 
 // Utility functions
 char* get_data(char *fname);
