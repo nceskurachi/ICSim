@@ -351,7 +351,7 @@ int send_can_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd) {
     if (n < 0) {
         perror("[ERROR] write failed");
     }
-    return n
+    return n;
 }
 
 int send_canfd_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd) {
