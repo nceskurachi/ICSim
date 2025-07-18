@@ -214,7 +214,8 @@ void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   SDL_Rect lock_icon_rect = { 600, 20, 32, 32 };
 
   // 1. Clear the screen with the base background texture
-  if (flags->speed_redraw || flags->doors_redraw || flags->turn_redraw) {
+  if (flags->speed_redraw || flags->doors_redraw || 
+    flags->turn_redraw || flags->lock_redraw) {
     blank_ic();
   }
   
@@ -223,7 +224,7 @@ void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
     update_speed(snapshot);
   }
   if (flags->doors_redraw ){
-    update_doors(snapshot);
+    update_doors(snapshot);n
   }
   if (flags->turn_redraw ){
     update_turn_signals(snapshot);
@@ -365,6 +366,7 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
   memset(&resp, 0, sizeof(resp));
   resp.can_id = 0x7E8;
   resp.len = 3;
+  resp.can_dlc = 3;
 
   if (sid != UDS_SECURITY_REQ) return;
 
