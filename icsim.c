@@ -421,13 +421,13 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
       resp.data[0] = 0x67;
       resp.data[1] = subfn;
       resp.data[2] = 0x00;
-      write(can_fd, &resp, sizeof(resp));
+      send_can_response(resp.can_id, resp.data, 3, can_fd);
       printf("[UDS] Key correct. Unlocked.\n");
     } else {
       resp.data[0] = 0x7F;
       resp.data[1] = UDS_SECURITY_REQ;
       resp.data[2] = 0x35;
-      write(can_fd, &resp, sizeof(resp));
+      send_can_response(resp.can_id, resp.data, 3, can_fd);
       printf("[UDS] Invalid key: 0x%02X (expected: 0x%02X)\n", key, expected);
     }
   }
