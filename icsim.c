@@ -178,6 +178,7 @@ void update_turn_signals(CarState* state) {
 }
 
 void update_lock_icon(CarState* state) {
+  printf("lock_status = %d\n", state->lock_status);
   SDL_Texture* tex = (state->lock_status == OFF) ? unlock_tex : lock_tex;
   int tex_w = 0, tex_h = 0;
   int win_w = 0, win_h = 0;
