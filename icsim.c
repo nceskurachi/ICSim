@@ -214,24 +214,13 @@ void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   SDL_Rect lock_icon_rect = { 600, 20, 32, 32 };
 
   // 1. Clear the screen with the base background texture
-  if (flags->speed_redraw || flags->doors_redraw || 
-    flags->turn_redraw || flags->lock_redraw) {
-    blank_ic();
-  }
+  blank_ic();
   
   // 2. Draw all dynamic components on top based on their current state
-  if (flags->speed_redraw ){
-    update_speed(snapshot);
-  }
-  if (flags->doors_redraw ){
-    update_doors(snapshot);n
-  }
-  if (flags->turn_redraw ){
-    update_turn_signals(snapshot);
-  }
-  if (flags->lock_redraw) {
-    update_lock_icon(snapshot);
-  }
+  update_speed(snapshot);
+  update_doors(snapshot);n
+  update_turn_signals(snapshot);
+  update_lock_icon(snapshot);
 }
 
 
