@@ -108,6 +108,8 @@ void redraw_ic(CarState* snapshot, RedrawFlags* flags);
 void update_redraw_flags(CarState* prev, CarState* curr, RedrawFlags* flags);
 
 // UDS (Unified Diagnostic Services)
+int send_can_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd);
+int send_canfd_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd);
 Uint8 generate_seed(void);
 Uint8 calculate_key(Uint8 seed);
 

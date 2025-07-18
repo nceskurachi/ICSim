@@ -218,7 +218,7 @@ void redraw_ic(CarState* snapshot, RedrawFlags* flags) {
   
   // 2. Draw all dynamic components on top based on their current state
   update_speed(snapshot);
-  update_doors(snapshot);n
+  update_doors(snapshot);
   update_turn_signals(snapshot);
   update_lock_icon(snapshot);
 }
@@ -340,6 +340,39 @@ void update_redraw_flags(CarState* prev, CarState* curr, RedrawFlags* flags) {
   flags->lock_redraw = (prev->lock_status != curr->lock_status);
 }
 
+int send_can_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd) {
+    struct can_frame resp;
+    memset(&resp, 0, sizeof(resp));
+    resp.can_id = can_id;
+    resp.can_dlc = len;
+    memcpy(resp.data, data, len);
+
+    ssize_t n = write(can_fd, &resp, sizeof(resp));
+    if (n < 0) {
+        perror("[ERROR] write failed");
+    }
+    return n
+}
+
+int send_canfd_response(uint32_t can_id, uint8_t* data, uint8_t len, int can_fd) {
+    if (len > CANFD_MAX_DLEN) {
+        fprintf(stderr, "[ERROR] CAN FD payload too large (%d bytes)\n", len);
+        return;
+    }
+
+    struct canfd_frame frame;
+    memset(&frame, 0, sizeof(frame));
+
+    frame.can_id = can_id;
+    frame.len = len;  // CAN FDでは .len を使用
+    memcpy(frame.data, data, len);
+
+    ssize_t n = write(can_fd, &frame, sizeof(struct canfd_frame));
+    if (n < 0) {
+        perror("[ERROR] CAN FD write failed");
+    }
+    return n;
+}
 
 // UDS Security Access simulation
 #define EXPECTED_KEY 0x5A
@@ -355,7 +388,6 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
   memset(&resp, 0, sizeof(resp));
   resp.can_id = 0x7E8;
   resp.len = 3;
-  resp.can_dlc = 3;
 
   if (sid != UDS_SECURITY_REQ) return;
 
@@ -367,7 +399,7 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
     resp.data[0] = 0x67;
     resp.data[1] = subfn;
     resp.data[2] = ctx->seed;
-    write(can_fd, &resp, sizeof(resp));
+    send_can_response(resp.can_id, resp.data, 3, can_fd);
     printf("[UDS] Sent seed: 0x%02X\n", ctx->seed);
   }
   else if (subfn == UDS_SECURITY_REQ_KEY && ctx->state == SEC_STATE_WAIT_KEY) {
