@@ -417,6 +417,7 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
 
     if (key == expected) {
       car_state.lock_status = OFF;
+      car_state.unlock_time = SDL_GetTicks();
       ctx->state = SEC_STATE_IDLE;
 
       resp.data[0] = 0x67;
@@ -600,7 +601,6 @@ int main(int argc, char *argv[]) {
 
     // 3. Check if the state has changed and redraw if necessary
     update_redraw_flags(&prev_snapshot, &snapshot, &redraw_flags);
-
     if (redraw_flags.speed_redraw || redraw_flags.doors_redraw ||
        redraw_flags.turn_redraw || redraw_flags.lock_redraw) {
       redraw_ic(&snapshot, &redraw_flags);
@@ -608,7 +608,18 @@ int main(int argc, char *argv[]) {
       prev_snapshot = snapshot;
     }
 
-    // 4. Delay to maintain target FPS
+    // 4. Update the lock status if it is ON
+    if (snapshot.lock_status == OFF) {
+      Uint32 now = SDL_GetTicks();
+      if (now - snapshot.unlock_time > 30000) {  // 30秒経過
+        SDL_LockMutex(state_mutex);
+        car_state.lock_status = ON;
+        SDL_UnlockMutex(state_mutex);
+        printf("[TIMEOUT] Auto-lock after 30 seconds of inactivity\n");
+      }
+    }
+
+    // 5. Delay to maintain target FPS
     frame_time = SDL_GetTicks() - frame_start;
     if (frame_time < FRAME_DELAY_MS) {
       SDL_Delay(FRAME_DELAY_MS - frame_time);

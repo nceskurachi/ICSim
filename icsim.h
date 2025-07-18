@@ -61,7 +61,8 @@ typedef struct {
   long speed;
   int door_status[4];
   int turn_status[2];
-  int lock_status; // DOOR_LOCKED / DOOR_UNLOCKED
+  int lock_status; // ON / OFF
+  Uint32 unlock_time; 
 } CarState;
 
 // Define the redraw flags structure
