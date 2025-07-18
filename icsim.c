@@ -415,7 +415,7 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
     Uint8 expected = calculate_key(ctx->seed);
 
     if (key == expected) {
-      car_state.lock_status = DOOR_UNLOCKED;
+      car_state.lock_status = OFF;
       ctx->state = SEC_STATE_IDLE;
 
       resp.data[0] = 0x67;
@@ -424,6 +424,7 @@ void update_security_status(struct canfd_frame *cf, int maxdlen, int can_fd, Sec
       send_can_response(resp.can_id, resp.data, 3, can_fd);
       printf("[UDS] Key correct. Unlocked.\n");
     } else {
+      car_state.lock_status = ON;
       resp.data[0] = 0x7F;
       resp.data[1] = UDS_SECURITY_REQ;
       resp.data[2] = 0x35;
