@@ -304,9 +304,9 @@ int can_receive_thread(void* arg) {
     if (nbytes <= 0) continue;
 
     SDL_LockMutex(state_mutex);
-    if (frame.can_id == door_id) update_door_status(&frame, CAN_MTU);
-    if (frame.can_id == signal_id) update_signal_status(&frame, CAN_MTU);
-    if (frame.can_id == speed_id) update_speed_status(&frame, CAN_MTU);
+    if (frame.can_id == DEFAULT_DOOR_ID) update_door_status(&frame, CAN_MTU);
+    if (frame.can_id == DEFAULT_SIGNAL_ID) update_signal_status(&frame, CAN_MTU);
+    if (frame.can_id == DEFAULT_SPEED_ID) update_speed_status(&frame, CAN_MTU);
     if (frame.can_id == UDS_DIAG_ID) update_security_status(&frame, CAN_MTU, can_fd, &sec_ctx);
     SDL_UnlockMutex(state_mutex);
     }
